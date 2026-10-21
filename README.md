@@ -1,10 +1,10 @@
 # Q.U.I.Z. Maker
 
-App web locale in italiano: configurazione Q.U.I.Z., domande singole, correzione con spiegazione, punteggi parziali, interruzione e riepilogo con ripasso mirato. Interfaccia responsive e utilizzabile da tastiera.
+App web in italiano, utilizzabile in locale, online su Render e come app Android: configurazione Q.U.I.Z., domande singole, correzione con spiegazione, punteggi parziali, interruzione e riepilogo con ripasso mirato. Interfaccia responsive e utilizzabile da tastiera.
 
 ## Avvio
 
-Richiede Node.js 24 o superiore. Nessuna dipendenza da installare.
+Richiede Node.js 24 o superiore. Il server non ha dipendenze; `pnpm install` serve solo per l'app Android (Capacitor).
 
 1. Copia `.env.example` in `.env`.
 2. Imposta `MISTRAL_API_KEY` nel file `.env`, senza condividerla in chat.
@@ -14,6 +14,39 @@ Richiede Node.js 24 o superiore. Nessuna dipendenza da installare.
 Per provarlo dal telefono sulla stessa rete Wi-Fi usa `pnpm start:lan`: il terminale mostra un indirizzo con un codice di accesso nuovo a ogni avvio. Aprilo sul telefono (al primo avvio Windows chiede di consentire Node nel firewall: scegli solo “Reti private”). Senza codice gli altri dispositivi della rete non possono usare il quiz né il tuo credito.
 
 Senza chiave puoi esplorare la configurazione, ma non generare quiz. Modello predefinito: `mistral-small-latest`, modificabile con `AI_MODEL`. Le chiamate consumano il credito del tuo account Mistral. La generazione iniziale prepara tutto il quiz; le risposte multiple e “non so” vengono corrette senza altre chiamate, quelle libere e snippet richiedono una chiamata ciascuna.
+
+## Pubblicazione su Render
+
+Il servizio Web Node su Render usa:
+
+- build: `pnpm install --frozen-lockfile --prod`
+- avvio: `pnpm start`
+
+Variabili d'ambiente, da impostare solo nel pannello di Render (Environment), mai nel codice:
+
+| Variabile | Valore |
+|---|---|
+| `MISTRAL_API_KEY` | la chiave Mistral |
+| `ACCESS_CODE` | codice di accesso scelto da te, almeno 8 caratteri |
+| `AI_MODEL` | facoltativa, es. `mistral-medium-latest` |
+
+Quando Render imposta `RENDER_EXTERNAL_HOSTNAME`, il server passa in modalità pubblica: senza `ACCESS_CODE` non si avvia. Ogni dispositivo inserisce il codice una volta; resta ricordato per 180 giorni in un cookie HttpOnly e Secure, che contiene un'impronta del codice e non il codice. Cambiando `ACCESS_CODE` tutti gli accessi scadono. Dopo 10 codici errati in 15 minuti l'accesso si blocca temporaneamente per tutti.
+
+`GET /health` risponde senza codice ed è pensato per il controllo di Render o per un cron job che tenga sveglio il piano gratuito (che altrimenti si sospende dopo 15 minuti di inattività).
+
+## App Android
+
+L'app (Capacitor) apre il servizio pubblicato, indicato in `capacitor.config.json` (`server.url`): i miglioramenti al quiz arrivano senza reinstallare l'APK. `app-shell/` contiene solo la pagina mostrata se il server non è raggiungibile.
+
+Richiede JDK 21 e Android SDK (`android/local.properties` con `sdk.dir`, escluso da git).
+
+```sh
+pnpm install
+pnpm exec cap sync android
+cd android && ./gradlew assembleDebug
+```
+
+L'APK di prova è in `android/app/build/outputs/apk/debug/app-debug.apk`. Si installa sul telefono consentendo l'installazione da origini sconosciute. Ricostruirlo serve solo se cambiano indirizzo, nome, icona o configurazione nativa.
 
 ## Sostituire Mistral
 
@@ -62,6 +95,6 @@ I test usano provider simulati e non consumano credito. La verifica reale della 
 
 ## Ambito della versione
 
-Il server ascolta solo su `127.0.0.1`: questa è una versione per uso locale, senza account, database o pubblicazione. L'interfaccia si adatta anche a schermi piccoli; per accedervi da un telefono occorrerà distribuire il servizio con HTTPS e aggiungere autenticazione e limiti di utilizzo. Non esporre semplicemente questo server su Internet.
+Con `pnpm start` il server ascolta solo su `127.0.0.1`. Le modalità rete locale (`--lan`) e pubblica richiedono sempre un codice di accesso. Non ci sono account né database: un solo codice condiviso protegge il credito AI, e sessioni e quiz in corso si perdono a ogni riavvio o sospensione del servizio.
 
 Le risposte e l'argomento vengono inviati al provider AI configurato. La chiave resta sul server; non viene inclusa nei file pubblici né nei messaggi di errore remoti.

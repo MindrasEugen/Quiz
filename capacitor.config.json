@@ -1,5 +1,10 @@
 {
   "appId": "it.quizmaker.app",
   "appName": "Q.U.I.Z. Maker",
-  "webDir": "app-shell"
+  "webDir": "app-shell",
+  "server": {
+    "url": "https://quiz-maker-e10k.onrender.com",
+    "cleartext": false,
+    "errorPath": "index.html"
+  }
 }
