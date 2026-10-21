@@ -73,7 +73,7 @@ Riferimento Mistral: [Chat Completions](https://docs.mistral.ai/studio/conversat
 
 - Puoi descrivere il quiz in una frase (es. “10 domande facili a risposta multipla sugli array in JavaScript”): l'AI riconosce gli elementi Q.U.I.Z. presenti. Se ci sono tutti e quattro il quiz parte subito, altrimenti il wizard chiede solo quelli mancanti, nell'ordine Q→U→I→Z. Ogni analisi è una chiamata AI, al massimo una ogni due secondi.
 - Il wizard raccoglie un elemento mancante alla volta, con riepilogo delle scelte (✅ / ❌). I dati già forniti restano modificabili. Invio nei campi di testo equivale al pulsante del passo.
-- Argomenti vaghi o snippet fuori dalla programmazione producono un chiarimento, senza avviare il quiz: il wizard torna direttamente al passo da correggere, con la scelta precedente modificabile.
+- Gli argomenti ampi ma riconoscibili (es. “storia generale”, “cultura generale”) sono accettati e le domande si distribuiscono su periodi e sottotemi diversi. Argomenti senza un ambito comprensibile (es. “tutto”) o snippet fuori dalla programmazione producono un chiarimento, senza avviare il quiz: il wizard torna direttamente al passo da correggere, con la scelta precedente modificabile.
 - Nelle risposte multiple sbagliate la spiegazione dice anche perché l'opzione scelta è errata. Questi commenti sono generati insieme al quiz: nessuna chiamata AI in più.
 - Nei mix si alternano tre tipi per la programmazione, due negli altri argomenti; per pacchetti non divisibili per tre la differenza è al massimo una domanda.
 - Soluzioni e rubriche restano sul server. Il browser riceve la soluzione solo dopo la valutazione.
