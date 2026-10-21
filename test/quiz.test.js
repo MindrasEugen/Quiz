@@ -267,6 +267,32 @@ test('verifica delle multiple: errori o correzioni non valide lasciano il quiz g
   await free.service.start({ ...config, type: 'free' });
   assert.equal(free.verifications.length, 0);
 });
+test('verifica delle multiple: le opzioni equivalenti non riscritte sono accettate anche loro', async () => {
+  const data = generated();
+  data.questions[0] = { ...data.questions[0], prompt: 'Quale ciclo stampa 0 1 2 3 4?', correctIndex: 1,
+    options: ['for (let i = 1; i < 5; i++) console.log(i);', 'for (let i = 0; i < 5; i++) console.log(i);', 'for (let i = 0; i <= 4; i++) console.log(i);', 'for (let i = 0; i <= 5; i++) console.log(i);'],
+    optionFeedback: ['Parte da 1.', '', 'Questo feedback sbagliato non va mostrato.', 'Arriva a 5.'] };
+  const service = createQuizService({ async complete(request) {
+    if (request.input?.task === 'verifica') return { checks: [{ index: 0, correct: [1, '2', null] }, { index: 1, correct: [0] }], fixes: [] };
+    return data;
+  } }, n => n - 1);
+  const session = await service.start(config);
+  const q = session.questions[0], equivalent = q.options.indexOf('for (let i = 0; i <= 4; i++) console.log(i);');
+  assert.deepEqual(q.alsoCorrect, [equivalent]); assert.equal(q.optionFeedback[equivalent], '');
+  assert.deepEqual(session.questions[1].alsoCorrect, []);
+  const { result } = await service.answer(session, { questionId: 1, answer: equivalent });
+  assert.equal(result.score, 1); assert.match(result.explanation, /^Anche «for \(let i = 0; i <= 4/);
+  const wrong = await service.answer(session, { questionId: 2, answer: 0 });
+  assert.equal(wrong.result.score, 0);
+});
+test('verifica delle multiple: una riscrittura non valida mantiene le opzioni accettate dai checks', async () => {
+  const service = createQuizService({ async complete(request) {
+    if (request.input?.task === 'verifica') return { checks: [{ index: 3, correct: [0, 2] }], fixes: [{ index: 3, question: { options: ['solo due', 'opzioni'] } }] };
+    return generated();
+  } }, n => n - 1);
+  const q = (await service.start(config)).questions[3];
+  assert.equal(q.prompt, 'Quesito 3?'); assert.deepEqual(q.alsoCorrect.map(i => q.options[i]), ['Mai']);
+});
 test('pacchetti incompleti: chiede solo le domande mancanti, con i type per posizione', async () => {
   const requests = [];
   const full = generated('multiple').questions.map((q, i) => ({ ...q, type: i % 2 ? 'free' : 'multiple', options: i % 2 ? [] : q.options, correctIndex: i % 2 ? null : 0 }));
