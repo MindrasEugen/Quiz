@@ -4,14 +4,19 @@ import { fileURLToPath } from 'node:url';
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
 import { createProvider } from './providers.js';
+import { createStore } from './store.js';
 import { createQuizService, publicQuestion, summarize, validateConfig, validateDescription, QuizError } from './quiz.js';
 
 const provider = createProvider();
 const service = createQuizService(provider);
+// sessions è la copia in memoria; store conserva i quiz in corso anche dopo riavvii e deploy (Supabase, se configurato).
 const sessions = new Map();
 const files = new Map([['/', ['index.html', 'text/html']], ['/app.js', ['app.js', 'text/javascript']], ['/style.css', ['style.css', 'text/css']]]);
 const port = Number(process.env.PORT || 3000);
 const ttl = 4 * 60 * 60 * 1000;
+const store = createStore(process.env, fetch, ttl);
+// Salvataggio best effort: se Supabase non risponde il quiz continua dalla memoria, ma non sopravvive a un riavvio.
+const persist = async (token, quiz) => { try { await store.save(token, quiz); } catch (error) { console.error(`Salvataggio della sessione non riuscito: ${error.message}`); } };
 let lastParse = 0;
 // Modalità rete (--lan): raggiungibile da altri dispositivi della rete locale, solo con codice di accesso.
 const lan = process.argv.includes('--lan');
@@ -35,6 +40,7 @@ const accessCookie = `quiz_access=${accessToken.toString('hex')}; HttpOnly; Same
 const failedLogins = [];
 const loginPage = message => `<!doctype html><html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#f6f5f0"><title>Q.U.I.Z. Maker — Accesso</title><link rel="stylesheet" href="/style.css"></head><body><header class="topbar"><span class="brand"><span class="brand-icon">Q<span>↗</span></span> Q.U.I.Z. <span class="brand-light">Maker</span></span></header><main><section class="panel"><form class="panel-body" method="post" action="/accesso"><div class="section-heading"><div><h2>Inserisci il codice di accesso</h2><p>Serve una sola volta su questo dispositivo.</p></div></div>${message ? `<div class="error login-error" role="alert">${message}</div>` : ''}<label class="input-label" for="codice">Codice</label><div class="describe-row"><input class="topic-input" id="codice" name="codice" type="password" autocomplete="current-password" required maxlength="200" autofocus><button class="primary" type="submit">Entra →</button></div></form></section></main></body></html>`;
 setInterval(() => { for (const [id, session] of sessions) if (Date.now() - session.touched > ttl) sessions.delete(id); }, 60_000).unref();
+setInterval(() => store.cleanup().catch(error => console.error(`Pulizia delle sessioni non riuscita: ${error.message}`)), 10 * 60_000).unref();
 
 async function body(req) {
   let chunks = [], length = 0;
@@ -100,11 +106,18 @@ const server = createServer(async (req, res) => {
     const cookie = cookies.find(s => s.startsWith('quiz_session='))?.slice(13);
     let entry = cookie ? sessions.get(cookie) : undefined;
     if (entry && Date.now() - entry.touched > ttl) { sessions.delete(cookie); entry = undefined; }
+    // Dopo un riavvio la memoria è vuota: il quiz in corso si recupera dall'archivio.
+    if (!entry && /^[0-9a-f]{64}$/.test(cookie || '')) {
+      let quiz = null;
+      try { quiz = await store.load(cookie); } catch (error) { console.error(`Lettura della sessione non riuscita: ${error.message}`); }
+      entry = sessions.get(cookie);
+      if (!entry && quiz) sessions.set(cookie, entry = { touched: Date.now(), starting: false, quiz: { ...quiz, busy: false } });
+    }
     // Il cookie scade dopo quattro ore di inattività, come la sessione sul server: va rinnovato a ogni uso.
     const setCookie = token => res.setHeader('Set-Cookie', `quiz_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${ttl / 1000}${secure}`);
     if (entry) setCookie(cookie);
     if (req.method === 'GET' && path === '/api/status') {
-      if (entry) entry.touched = Date.now();
+      if (entry) { entry.touched = Date.now(); if (entry.quiz) await store.touch(cookie).catch(() => {}); }
       return send(200, { configured: provider.configured, provider: provider.name,
         quiz: entry?.quiz ? { config: entry.quiz.config, question: publicQuestion(entry.quiz), lastResult: entry.quiz.answers.at(-1) || null,
           summary: entry.quiz.finished ? summarize(entry.quiz) : null } : null });
@@ -121,9 +134,10 @@ const server = createServer(async (req, res) => {
     if (path === '/api/start') {
       // Configurazione non valida: errore immediato, senza creare sessioni né attivare l'attesa tra generazioni.
       validateConfig(data);
+      let token = cookie;
       if (!entry) {
         if (sessions.size >= 100) throw new QuizError('Troppe sessioni aperte. Riprova più tardi.', 429);
-        const token = randomBytes(32).toString('hex');
+        token = randomBytes(32).toString('hex');
         entry = { touched: Date.now(), starting: false, quiz: null };
         sessions.set(token, entry);
         setCookie(token);
@@ -134,13 +148,14 @@ const server = createServer(async (req, res) => {
       try {
         entry.quiz = await service.start(data);
         entry.touched = Date.now();
+        await persist(token, entry.quiz);
         return send(200, { question: publicQuestion(entry.quiz) });
       } finally { entry.starting = false; }
     }
     if (!entry?.quiz) throw new QuizError('Sessione scaduta. Crea un nuovo quiz.', 404);
     entry.touched = Date.now();
-    if (path === '/api/answer') return send(200, await service.answer(entry.quiz, data));
-    if (path === '/api/stop') return send(200, { summary: service.stop(entry.quiz) });
+    if (path === '/api/answer') { const result = await service.answer(entry.quiz, data); await persist(cookie, entry.quiz); return send(200, result); }
+    if (path === '/api/stop') { const summary = service.stop(entry.quiz); await persist(cookie, entry.quiz); return send(200, { summary }); }
     return send(404, { error: 'Operazione non trovata.' });
   } catch (error) { send(error.status || 502, { error: error.message || 'Operazione non riuscita. Riprova.', ...(error.field && { field: error.field }) }); }
 });
@@ -149,5 +164,6 @@ server.requestTimeout = 300_000;
 server.listen(port, lan || publicHost ? '0.0.0.0' : '127.0.0.1', () => {
   console.log(`Q.U.I.Z. Maker → http://localhost:${port}`);
   for (const address of lanAddresses) console.log(`Dalla rete locale → http://${address}:${port}/?codice=${accessCode}`);
+  console.log(`Sessioni: ${store.name}.`);
   console.log(`Provider: ${provider.name}. ${provider.configured ? 'Configurazione presente.' : 'Inserisci la chiave nel file .env per iniziare.'}`);
 });

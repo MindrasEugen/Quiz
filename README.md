@@ -29,8 +29,12 @@ Variabili d'ambiente, da impostare solo nel pannello di Render (Environment), ma
 | `MISTRAL_API_KEY` | la chiave Mistral |
 | `ACCESS_CODE` | codice di accesso scelto da te, almeno 8 caratteri |
 | `AI_MODEL` | facoltativa, es. `mistral-medium-latest` |
+| `SUPABASE_URL` | `https://wjswqerpvwockfbgjggy.supabase.co` (progetto Supabase `cinema-vicino-app`) |
+| `SUPABASE_SECRET_KEY` | chiave segreta del progetto (Settings → API Keys → Secret keys); mai la chiave pubblica |
 
 Quando Render imposta `RENDER_EXTERNAL_HOSTNAME`, il server passa in modalità pubblica: senza `ACCESS_CODE` non si avvia. Ogni dispositivo inserisce il codice una volta; resta ricordato per 180 giorni in un cookie HttpOnly e Secure, che contiene un'impronta del codice e non il codice. Cambiando `ACCESS_CODE` tutti gli accessi scadono. Dopo 10 codici errati in 15 minuti l'accesso si blocca temporaneamente per tutti.
+
+Con `SUPABASE_URL` e `SUPABASE_SECRET_KEY` i quiz in corso sono salvati nella tabella `AAA3_Quiz_sessions` e sopravvivono a deploy e sospensioni del piano gratuito: al riavvio il quiz riprende dalla domanda a cui eri. La tabella ha RLS attivo senza policy e nessun permesso per `anon` e `authenticated`: la leggono solo il server e la chiave segreta, perché contiene le soluzioni. L'id di ogni riga è l'impronta SHA-256 del cookie di sessione, non il cookie. Senza queste variabili (per esempio in locale) le sessioni restano in memoria.
 
 `GET /health` risponde senza codice ed è pensato per il controllo di Render o per un cron job che tenga sveglio il piano gratuito (che altrimenti si sospende dopo 15 minuti di inattività).
 
@@ -85,7 +89,7 @@ Riferimento Mistral: [Chat Completions](https://docs.mistral.ai/studio/conversat
 - Nelle risposte multiple la posizione della risposta corretta è scelta dal server: casuale ma bilanciata tra A, B, C e D.
 - Multipla: 0 o 1. Libera e snippet: 0, 0.5 o 1. “Non so”: sempre 0 con spiegazione.
 - Il voto è arrotondato al mezzo punto; il livello usa la percentuale effettiva, prima dell'arrotondamento. In caso di interruzione il denominatore è il numero di domande svolte.
-- Ricaricando la pagina riprendi la sessione tramite cookie HttpOnly. Sessioni solo in memoria: scadono dopo quattro ore di inattività e si perdono riavviando il server.
+- Ricaricando la pagina riprendi la sessione tramite cookie HttpOnly. Le sessioni scadono dopo quattro ore di inattività; con Supabase configurato sopravvivono ai riavvii del server, altrimenti restano solo in memoria.
 
 ## Verifiche
 
@@ -98,6 +102,6 @@ I test usano provider simulati e non consumano credito. La verifica reale della 
 
 ## Ambito della versione
 
-Con `pnpm start` il server ascolta solo su `127.0.0.1`. Le modalità rete locale (`--lan`) e pubblica richiedono sempre un codice di accesso. Non ci sono account né database: un solo codice condiviso protegge il credito AI, e sessioni e quiz in corso si perdono a ogni riavvio o sospensione del servizio.
+Con `pnpm start` il server ascolta solo su `127.0.0.1`. Le modalità rete locale (`--lan`) e pubblica richiedono sempre un codice di accesso. Non ci sono account: un solo codice condiviso protegge il credito AI. Il database (Supabase) conserva solo i quiz in corso, per quattro ore di inattività; senza Supabase si perdono a ogni riavvio o sospensione del servizio.
 
 Le risposte e l'argomento vengono inviati al provider AI configurato. La chiave resta sul server; non viene inclusa nei file pubblici né nei messaggi di errore remoti.

@@ -12,7 +12,7 @@
     "start:lan": "node --env-file-if-exists=.env server/index.js --lan",
     "dev": "node --env-file-if-exists=.env --watch server/index.js",
     "test": "node --test",
-    "check": "node --check server/index.js && node --check server/quiz.js && node --check server/providers.js && node --check public/app.js"
+    "check": "node --check server/index.js && node --check server/quiz.js && node --check server/providers.js && node --check server/store.js && node --check public/app.js"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.3",
