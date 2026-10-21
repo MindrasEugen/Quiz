@@ -72,7 +72,7 @@ function renderSummary(summary) {
 async function startQuiz() {
   if (!configured) throw new Error(notConfigured);
   setBusy(true);
-  root.innerHTML = '<div class="panel loading" role="status"><div class="spinner" aria-hidden="true"></div><h2>La curiosità prende forma.</h2><p>Sto preparando domande e spiegazioni sul tuo argomento.<br>Potrebbe volerci un minuto.</p></div>';
+  root.innerHTML = '<div class="panel loading" role="status"><div class="spinner" aria-hidden="true"></div><h2>La curiosità prende forma.</h2><p>Sto preparando e ricontrollando domande e spiegazioni sul tuo argomento.<br>Potrebbe volerci un minuto.</p></div>';
   try {
     const result = await api('start', config); question = result.question; lastResult = null; renderQuestion();
   } catch (e) {

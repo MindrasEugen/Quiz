@@ -10,11 +10,15 @@ function generated(type = 'multiple') {
     correctIndex: type === 'multiple' ? 0 : null, solution: 'Una soluzione', explanation: 'La soluzione verifica il concetto. Le altre alternative non lo rispettano.',
     rubric: 'Un punto per il concetto completo, mezzo per una parte.', review: `Prova un esempio del concetto ${i}.` })) };
 }
-function makeService(data = generated()) {
-  const calls = [];
-  const provider = { async complete(request) { calls.push(request); return calls.length === 1 ? data : { score: 0.5, explanation: 'Hai espresso parte del concetto. Manca il caso limite.' }; } };
+// Le chiamate di verifica delle multiple sono registrate a parte: `calls` resta generazione + correzioni.
+function makeService(data = generated(), fixes = []) {
+  const calls = [], verifications = [];
+  const provider = { async complete(request) {
+    if (request.input?.task === 'verifica') { verifications.push(request); return { fixes }; }
+    calls.push(request); return calls.length === 1 ? data : { score: 0.5, explanation: 'Hai espresso parte del concetto. Manca il caso limite.' };
+  } };
   // Mescolamento neutro (nessuno scambio): posizioni corrette prevedibili nei test, 0,1,2,3,0...
-  return { service: createQuizService(provider, n => n - 1), calls };
+  return { service: createQuizService(provider, n => n - 1), calls, verifications };
 }
 test('configurazione: rifiuta input incompleti o fuori dai pacchetti', () => {
   assert.throws(() => validateConfig({ ...config, size: 12 }));
@@ -238,4 +242,28 @@ test('codice facoltativo nelle multiple e libere, obbligatorio negli snippet', a
   assert.equal((await makeService(free).service.start({ ...config, type: 'free' })).questions[0].code, 'console.log([].length);');
   const snippet = generated('snippet'); snippet.questions[0].code = '  ';
   await assert.rejects(makeService(snippet).service.start({ ...config, type: 'snippet' }), /Formato della domanda non valido/);
+});
+test('verifica delle multiple: sostituisce le domande ambigue e mantiene concetto e area', async () => {
+  const fix = { prompt: 'Quale letterale crea un array vuoto?', code: '', options: ['[]', '{}', '""', '0'], correctIndex: 0,
+    optionFeedback: ['', 'Crea un oggetto.', 'Crea una stringa.', 'È un numero.'], solution: '[]',
+    explanation: 'Le parentesi quadre creano un array. Le graffe un oggetto.', rubric: 'Riconosce il letterale.', review: 'Crea tre array diversi.' };
+  const { service, calls, verifications } = makeService(generated(), [{ index: '2', question: { ...fix, concept: 'Altro', type: 'free' } }]);
+  const session = await service.start(config);
+  assert.equal(calls.length, 1); assert.equal(verifications.length, 1);
+  assert.equal(verifications[0].input.questions.length, 10);
+  assert.equal('optionFeedback' in verifications[0].input.questions[0], false);
+  const replaced = session.questions[2];
+  assert.equal(replaced.prompt, fix.prompt); assert.equal(replaced.type, 'multiple'); assert.equal(replaced.concept, 'Concetto 2');
+  assert.equal(replaced.options[replaced.correctIndex], '[]');
+  assert.equal(session.questions[3].prompt, 'Quesito 3?');
+});
+test('verifica delle multiple: errori o correzioni non valide lasciano il quiz generato', async () => {
+  const broken = makeService(generated(), [{ index: 1, question: { options: ['solo due', 'opzioni'] } }]);
+  assert.equal((await broken.service.start(config)).questions[1].prompt, 'Quesito 1?');
+  let calls = 0;
+  const offline = createQuizService({ async complete() { if (++calls === 1) return generated(); throw new Error('offline'); } }, n => n - 1);
+  assert.equal((await offline.start(config)).questions.length, 10);
+  const free = makeService(generated('free'));
+  await free.service.start({ ...config, type: 'free' });
+  assert.equal(free.verifications.length, 0);
 });
