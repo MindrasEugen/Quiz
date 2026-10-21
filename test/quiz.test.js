@@ -267,3 +267,24 @@ test('verifica delle multiple: errori o correzioni non valide lasciano il quiz g
   await free.service.start({ ...config, type: 'free' });
   assert.equal(free.verifications.length, 0);
 });
+test('pacchetti incompleti: chiede solo le domande mancanti, con i type per posizione', async () => {
+  const requests = [];
+  const full = generated('multiple').questions.map((q, i) => ({ ...q, type: i % 2 ? 'free' : 'multiple', options: i % 2 ? [] : q.options, correctIndex: i % 2 ? null : 0 }));
+  const service = createQuizService({ async complete(request) {
+    if (request.input?.task === 'verifica') return { fixes: [] };
+    requests.push(request);
+    // Prima risposta: 7 domande su 10 (il mix non tecnico alterna multiple e free); poi 4 domande, una di troppo.
+    return requests.length === 1 ? { technical: false, questions: full.slice(0, 7) } : { technical: false, questions: [...full.slice(7), { ...full[0], concept: 'Extra', prompt: 'Extra?' }] };
+  } }, n => n - 1);
+  const session = await service.start({ ...config, type: 'mix' });
+  assert.equal(session.questions.length, 10); assert.equal(requests.length, 2);
+  assert.equal(requests[1].input.size, 3);
+  assert.deepEqual(requests[1].input.types, ['free', 'multiple', 'free']);
+  assert.equal(requests[1].input.existing.length, 7); assert.equal(requests[1].input.existing[0].concept, 'Concetto 0');
+  assert.equal(session.questions.some(q => q.prompt === 'Extra?'), false);
+});
+test('pacchetti incompleti: se l\'integrazione fallisce resta l\'errore di quiz incompleto', async () => {
+  let calls = 0;
+  const service = createQuizService({ async complete() { if (++calls === 1) return { technical: true, questions: generated().questions.slice(0, 5) }; throw new Error('offline'); } });
+  await assert.rejects(service.start(config), /incompleto/);
+});

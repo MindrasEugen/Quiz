@@ -144,7 +144,8 @@ const server = createServer(async (req, res) => {
     return send(404, { error: 'Operazione non trovata.' });
   } catch (error) { send(error.status || 502, { error: error.message || 'Operazione non riuscita. Riprova.', ...(error.field && { field: error.field }) }); }
 });
-server.requestTimeout = 150_000;
+// Generazione, eventuale integrazione delle domande mancanti e verifica: con 20 domande servono anche 80-90 secondi.
+server.requestTimeout = 300_000;
 server.listen(port, lan || publicHost ? '0.0.0.0' : '127.0.0.1', () => {
   console.log(`Q.U.I.Z. Maker → http://localhost:${port}`);
   for (const address of lanAddresses) console.log(`Dalla rete locale → http://${address}:${port}/?codice=${accessCode}`);
