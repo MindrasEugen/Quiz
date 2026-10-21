@@ -1,0 +1,15 @@
+{
+  "name": "quiz-maker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Quiz interattivi in italiano con provider AI sostituibile",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server/index.js",
+    "start:lan": "node --env-file-if-exists=.env server/index.js --lan",
+    "dev": "node --env-file-if-exists=.env --watch server/index.js",
+    "test": "node --test",
+    "check": "node --check server/index.js && node --check server/quiz.js && node --check server/providers.js && node --check public/app.js"
+  }
+}
